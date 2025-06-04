@@ -52,6 +52,15 @@
             width: 100%;
             height: 100%;
             z-index: 2;
+            pointer-events: none;
+        }
+        
+        .paint-area {
+            position: absolute;
+            background-color: #4682B4;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            opacity: 0.8;
         }
         
         #roller {
@@ -158,15 +167,6 @@
             max-width: 80%;
         }
         
-        .paint-circle {
-            position: absolute;
-            background-color: #4682B4;
-            border-radius: 50%;
-            transform: translate(-50%, -50%);
-            pointer-events: none;
-            z-index: 3;
-        }
-        
         @media (max-width: 480px) {
             #roller {
                 width: 70px;
@@ -230,15 +230,13 @@
         let gameStarted = false;
         let lastX, lastY;
         
-        // Создаем холст для отслеживания покрашенных областей
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
+        // Размер кисти (радиус круга краски)
+        const BRUSH_SIZE = 25;
+        // Массив для хранения покрашенных областей
+        let paintedCircles = [];
         
         // Инициализация
         function init() {
-            // Устанавливаем размеры холста
-            resizeCanvas();
-            
             // Размеры стены
             totalArea = wall.offsetWidth * wall.offsetHeight;
             
@@ -258,23 +256,12 @@
             
             // Кнопка старта
             startButton.addEventListener('click', startGame);
-            
-            // Обработчик изменения размера экрана
-            window.addEventListener('resize', resizeCanvas);
-            
-            // Заполняем холст прозрачным цветом
-            ctx.fillStyle = 'rgba(0, 0, 0, 0)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-        }
-        
-        function resizeCanvas() {
-            canvas.width = wall.offsetWidth;
-            canvas.height = wall.offsetHeight;
         }
         
         function startGame() {
             // Очищаем слой с краской
             paintLayer.innerHTML = '';
+            paintedCircles = [];
             
             startScreen.style.display = 'none';
             gameStarted = true;
@@ -286,10 +273,6 @@
             scoreElement.textContent = 'Очки: 0';
             timerElement.textContent = 'Время: 60';
             progressBar.style.width = '0%';
-            
-            // Очищаем холст
-            ctx.fillStyle = 'rgba(0, 0, 0, 0)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
             
             // Запускаем таймер
             clearInterval(timer);
@@ -322,11 +305,11 @@
         }
         
         function getQualityRating(score) {
-            if (score > 5000) return '⭐⭐⭐⭐⭐ Лучший!';
-            if (score > 3000) return '⭐⭐⭐⭐ Харош';
-            if (score > 1500) return '⭐⭐⭐ Пойдет';
+            if (score > 5000) return '⭐⭐⭐⭐⭐ Отлично!';
+            if (score > 3000) return '⭐⭐⭐⭐ Хорошо';
+            if (score > 1500) return '⭐⭐⭐ Удовлетворительно';
             if (score > 500) return '⭐⭐ Можно лучше';
-            return '⭐ Соберись';
+            return '⭐ Начинающий маляр';
         }
         
         function updateRollerPosition(x, y) {
@@ -353,20 +336,14 @@
             const relX = x - wallRect.left;
             const relY = y - wallRect.top;
             
-            // Создаем визуальный эффект покраски
-            createPaintCircle(relX, relY);
-            
-            // Рисуем на холсте (для отслеживания покрашенных областей)
-            ctx.fillStyle = 'rgba(70, 130, 180, 0.7)'; // SteelBlue с прозрачностью
-            ctx.beginPath();
-            ctx.arc(relX, relY, 25, 0, Math.PI * 2);
-            ctx.fill();
-            
             // Проверяем, не красили ли мы уже это место
-            const pixelData = ctx.getImageData(relX, relY, 1, 1).data;
-            if (pixelData[3] < 100) { // Если альфа-канал меньше 100 (не полностью покрашено)
+            if (!isAreaPainted(relX, relY)) {
+                // Создаем новый элемент краски
+                createPaintArea(relX, relY);
+                
+                // Добавляем очки
                 score += 10;
-                paintedArea += 25 * 25 * Math.PI; // Примерная площадь покрашенного круга
+                paintedArea += Math.PI * BRUSH_SIZE * BRUSH_SIZE;
                 scoreElement.textContent = `Очки: ${score}`;
                 
                 // Обновляем прогресс
@@ -378,36 +355,37 @@
             lastY = y;
         }
         
-        function createPaintCircle(x, y) {
+        function isAreaPainted(x, y) {
+            // Проверяем, есть ли рядом уже покрашенная область
+            for (const circle of paintedCircles) {
+                const dx = circle.x - x;
+                const dy = circle.y - y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < BRUSH_SIZE * 1.5) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        
+        function createPaintArea(x, y) {
             const circle = document.createElement('div');
-            circle.className = 'paint-circle';
-            circle.style.width = '50px';
-            circle.style.height = '50px';
+            circle.className = 'paint-area';
+            circle.style.width = `${BRUSH_SIZE * 2}px`;
+            circle.style.height = `${BRUSH_SIZE * 2}px`;
             circle.style.left = `${x}px`;
             circle.style.top = `${y}px`;
             circle.style.backgroundColor = getRandomPaintColor();
             
-            // Анимация появления
-            circle.style.opacity = '0';
-            circle.style.transition = 'opacity 0.3s, transform 0.5s';
-            
             paintLayer.appendChild(circle);
             
-            // Запускаем анимацию после добавления в DOM
-            setTimeout(() => {
-                circle.style.opacity = '0.8';
-                circle.style.transform = 'translate(-50%, -50%) scale(1.2)';
-                
-                // Удаляем круг через некоторое время
-                setTimeout(() => {
-                    circle.style.opacity = '0';
-                    setTimeout(() => {
-                        if (circle.parentNode) {
-                            paintLayer.removeChild(circle);
-                        }
-                    }, 300);
-                }, 500);
-            }, 10);
+            // Сохраняем информацию о круге
+            paintedCircles.push({
+                x: x,
+                y: y,
+                element: circle
+            });
         }
         
         function getRandomPaintColor() {
