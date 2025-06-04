@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Мобильный маляр</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            touch-action: none;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+        
+        #wall {
+            position: absolute;
+            width: 90%;
+            height: 70%;
+            left: 5%;
+            top: 15%;
+            background-color: #dddddd;
+            border: 4px solid #aaaaaa;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        #roller {
+            position: absolute;
+            width: 80px;
+            height: 50px;
+            background-color: #8B4513;
+            border-radius: 25px;
+            transform-origin: center;
+            z-index: 10;
+            pointer-events: none;
+        }
+        
+        #roller:after {
+            content: '';
+            position: absolute;
+            width: 64px;
+            height: 34px;
+            background-color: #4682B4;
+            border-radius: 17px;
+            left: 8px;
+            top: 8px;
+        }
+        
+        #progress-container {
+            position: absolute;
+            bottom: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80%;
+            height: 25px;
+            background-color: #e0e0e0;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        #progress-bar {
+            height: 100%;
+            width: 0%;
+            background-color: #4CAF50;
+            transition: width 0.2s;
+        }
+        
+        #score {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            font-size: 20px;
+            color: #333;
+            background-color: rgba(255,255,255,0.7);
+            padding: 5px 10px;
+            border-radius: 10px;
+        }
+        
+        #timer {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            font-size: 20px;
+            color: #333;
+            background-color: rgba(255,255,255,0.7);
+            padding: 5px 10px;
+            border-radius: 10px;
+        }
+        
+        #start-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 100;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        #start-button {
+            padding: 12px 25px;
+            font-size: 18px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            margin-top: 25px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .instructions {
+            margin-top: 20px;
+            font-size: 16px;
+            line-height: 1.5;
+            max-width: 80%;
+        }
+        
+        @media (max-width: 480px) {
+            #roller {
+                width: 70px;
+                height: 44px;
+            }
+            
+            #roller:after {
+                width: 56px;
+                height: 30px;
+                left: 7px;
+                top: 7px;
+            }
+            
+            #wall {
+                height: 65%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="wall"></div>
+        <div id="roller"></div>
+        <div id="progress-container">
+            <div id="progress-bar"></div>
+        </div>
+        <div id="score">Очки: 0</div>
+        <div id="timer">Время: 60</div>
+        
+        <div id="start-screen">
+            <h1>Мобильный маляр</h1>
+            <p>Покрасьте стену валиком!</p>
+            <div class="instructions">
+                <p>▶ Водите пальцем по экрану, чтобы красить</p>
+                <p>▶ Старайтесь покрасить всю стену за 60 секунд</p>
+                <p>▶ Получайте очки за каждый новый участок</p>
+            </div>
+            <button id="start-button">Начать покраску</button>
+        </div>
+    </div>
+
+    <script>
+        const wall = document.getElementById('wall');
+        const roller = document.getElementById('roller');
+        const progressBar = document.getElementById('progress-bar');
+        const scoreElement = document.getElementById('score');
+        const timerElement = document.getElementById('timer');
+        const startScreen = document.getElementById('start-screen');
+        const startButton = document.getElementById('start-button');
+        
+        let score = 0;
+        let paintedArea = 0;
+        let totalArea = 0;
+        let isPainting = false;
+        let gameTime = 60;
+        let timer;
+        let gameStarted = false;
+        let lastX, lastY;
+        
+        // Создаем холст для отслеживания покрашенных областей
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Инициализация
+        function init() {
+            // Устанавливаем размеры холста
+            resizeCanvas();
+            
+            // Размеры стены
+            totalArea = wall.offsetWidth * wall.offsetHeight;
+            
+            // Позиционируем валик
+            updateRollerPosition(window.innerWidth / 2, window.innerHeight / 2);
+            
+            // Обработчики событий для сенсорного управления
+            wall.addEventListener('touchstart', handleTouchStart, { passive: false });
+            wall.addEventListener('touchmove', handleTouchMove, { passive: false });
+            wall.addEventListener('touchend', handleTouchEnd);
+            
+            // Также добавляем обработчики для мыши (на случай десктопного использования)
+            wall.addEventListener('mousedown', handleMouseDown);
+            wall.addEventListener('mousemove', handleMouseMove);
+            wall.addEventListener('mouseup', handleMouseUp);
+            wall.addEventListener('mouseleave', handleMouseUp);
+            
+            // Кнопка старта
+            startButton.addEventListener('click', startGame);
+            
+            // Обработчик изменения размера экрана
+            window.addEventListener('resize', resizeCanvas);
+            
+            // Заполняем холст прозрачным цветом
+            ctx.fillStyle = 'rgba(0, 0, 0, 0)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        
+        function resizeCanvas() {
+            canvas.width = wall.offsetWidth;
+            canvas.height = wall.offsetHeight;
+        }
+        
+        function startGame() {
+            startScreen.style.display = 'none';
+            gameStarted = true;
+            
+            // Сброс игры
+            score = 0;
+            paintedArea = 0;
+            gameTime = 60;
+            scoreElement.textContent = 'Очки: 0';
+            timerElement.textContent = 'Время: 60';
+            progressBar.style.width = '0%';
+            
+            // Очищаем холст
+            ctx.fillStyle = 'rgba(0, 0, 0, 0)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Запускаем таймер
+            clearInterval(timer);
+            timer = setInterval(updateTimer, 1000);
+        }
+        
+        function updateTimer() {
+            gameTime--;
+            timerElement.textContent = `Время: ${gameTime}`;
+            
+            if (gameTime <= 0) {
+                clearInterval(timer);
+                endGame();
+            }
+        }
+        
+        function endGame() {
+            gameStarted = false;
+            startScreen.style.display = 'flex';
+            startScreen.innerHTML = `
+                <h1>Покраска завершена!</h1>
+                <p>Ваш результат: ${score} очков</p>
+                <p>Вы покрасили ${Math.round(paintedArea / totalArea * 100)}% стены</p>
+                <div class="instructions">
+                    <p>Качество покраски: ${getQualityRating(score)}</p>
+                </div>
+                <button id="start-button">Покрасить снова</button>
+            `;
+            document.getElementById('start-button').addEventListener('click', startGame);
+        }
+        
+        function getQualityRating(score) {
+            if (score > 5000) return '⭐⭐⭐⭐⭐ Отлично!';
+            if (score > 3000) return '⭐⭐⭐⭐ Хорошо';
+            if (score > 1500) return '⭐⭐⭐ Удовлетворительно';
+            if (score > 500) return '⭐⭐ Можно лучше';
+            return '⭐ Начинающий маляр';
+        }
+        
+        function updateRollerPosition(x, y) {
+            const wallRect = wall.getBoundingClientRect();
+            
+            // Ограничиваем положение валика в пределах стены
+            const rollerX = Math.max(wallRect.left, Math.min(x, wallRect.right)) - roller.offsetWidth / 2;
+            const rollerY = Math.max(wallRect.top, Math.min(y, wallRect.bottom)) - roller.offsetHeight / 2;
+            
+            roller.style.left = `${rollerX}px`;
+            roller.style.top = `${rollerY}px`;
+            
+            // Поворачиваем валик в направлении движения
+            if (lastX && lastY) {
+                const angle = Math.atan2(y - lastY, x - lastX) * 180 / Math.PI;
+                roller.style.transform = `rotate(${angle}deg)`;
+            }
+        }
+        
+        function paint(x, y) {
+            if (!isPainting || !gameStarted) return;
+            
+            const wallRect = wall.getBoundingClientRect();
+            const relX = x - wallRect.left;
+            const relY = y - wallRect.top;
+            
+            // Рисуем на холсте (это будет наша "краска")
+            ctx.fillStyle = 'rgba(70, 130, 180, 0.7)'; // SteelBlue с прозрачностью
+            ctx.beginPath();
+            ctx.arc(relX, relY, 25, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Проверяем, не красили ли мы уже это место
+            const pixelData = ctx.getImageData(relX, relY, 1, 1).data;
+            if (pixelData[3] < 100) { // Если альфа-канал меньше 100 (не полностью покрашено)
+                score += 10;
+                paintedArea += 25 * 25 * Math.PI; // Примерная площадь покрашенного круга
+                scoreElement.textContent = `Очки: ${score}`;
+                
+                // Обновляем прогресс
+                const progress = (paintedArea / totalArea) * 100;
+                progressBar.style.width = `${Math.min(progress, 100)}%`;
+            }
+            
+            lastX = x;
+            lastY = y;
+        }
+        
+        // Обработчики сенсорных событий
+        function handleTouchStart(e) {
+            e.preventDefault();
+            if (!gameStarted) return;
+            
+            isPainting = true;
+            const touch = e.touches[0];
+            updateRollerPosition(touch.clientX, touch.clientY);
+            paint(touch.clientX, touch.clientY);
+        }
+        
+        function handleTouchMove(e) {
+            e.preventDefault();
+            if (!isPainting || !gameStarted) return;
+            
+            const touch = e.touches[0];
+            updateRollerPosition(touch.clientX, touch.clientY);
+            paint(touch.clientX, touch.clientY);
+        }
+        
+        function handleTouchEnd() {
+            isPainting = false;
+        }
+        
+        // Обработчики событий мыши (для десктопной версии)
+        function handleMouseDown(e) {
+            if (!gameStarted) return;
+            
+            isPainting = true;
+            updateRollerPosition(e.clientX, e.clientY);
+            paint(e.clientX, e.clientY);
+        }
+        
+        function handleMouseMove(e) {
+            if (!isPainting || !gameStarted) return;
+            
+            updateRollerPosition(e.clientX, e.clientY);
+            paint(e.clientX, e.clientY);
+        }
+        
+        function handleMouseUp() {
+            isPainting = false;
+        }
+        
+        // Запускаем игру при загрузке
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
