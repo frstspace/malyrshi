@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Малярша</title>
+    <title>Малярши</title>
     <style>
         * {
             margin: 0;
@@ -24,34 +24,33 @@
             position: relative;
             width: 100%;
             height: 100%;
+            perspective: 1000px;
         }
         
-        #wall {
+        #wall-container {
             position: absolute;
             width: 90%;
             height: 70%;
             left: 5%;
             top: 15%;
-            background-color: #dddddd;
-            border: 4px solid #aaaaaa;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-            overflow: hidden;
+            transform-style: preserve-3d;
+            transform: rotateX(15deg) rotateY(0deg);
         }
         
-        #wall-bg {
+        #wall {
             position: absolute;
             width: 100%;
             height: 100%;
             background-color: #dddddd;
-            z-index: 1;
+            transform: translateZ(0);
+            box-shadow: 0 0 30px rgba(0,0,0,0.2);
+            overflow: hidden;
         }
         
         #paint-layer {
             position: absolute;
             width: 100%;
             height: 100%;
-            z-index: 2;
             pointer-events: none;
         }
         
@@ -61,6 +60,7 @@
             border-radius: 50%;
             transform: translate(-50%, -50%);
             opacity: 0.8;
+            pointer-events: none;
         }
         
         #roller {
@@ -180,7 +180,7 @@
                 top: 7px;
             }
             
-            #wall {
+            #wall-container {
                 height: 65%;
             }
         }
@@ -188,9 +188,10 @@
 </head>
 <body>
     <div id="game-container">
-        <div id="wall">
-            <div id="wall-bg"></div>
-            <div id="paint-layer"></div>
+        <div id="wall-container">
+            <div id="wall">
+                <div id="paint-layer"></div>
+            </div>
         </div>
         <div id="roller"></div>
         <div id="progress-container">
@@ -200,18 +201,19 @@
         <div id="timer">Время: 60</div>
         
         <div id="start-screen">
-            <h1>Малярша</h1>
-            <p>Покрась стену валиком!</p>
+            <h1>Малярши</h1>
+            <p>Покрасьте стену валиком!</p>
             <div class="instructions">
-                <p>▶ Води пальцем по экрану, чтобы красить</p>
-                <p>▶ Старайся покрасить всю стену за 60 секунд</p>
-                <p>▶ Получай очки за каждый новый участок</p>
+                <p>▶ Водите пальцем по экрану, чтобы красить</p>
+                <p>▶ Старайтесь покрасить всю стену за 60 секунд</p>
+                <p>▶ Получайте очки за каждый новый участок</p>
             </div>
             <button id="start-button">Начать покраску</button>
         </div>
     </div>
 
     <script>
+        const wallContainer = document.getElementById('wall-container');
         const wall = document.getElementById('wall');
         const paintLayer = document.getElementById('paint-layer');
         const roller = document.getElementById('roller');
@@ -234,6 +236,9 @@
         const BRUSH_SIZE = 25;
         // Массив для хранения покрашенных областей
         let paintedCircles = [];
+        // Угол поворота стены
+        let wallAngleY = 0;
+        let wallAngleX = 15;
         
         // Инициализация
         function init() {
@@ -244,18 +249,27 @@
             updateRollerPosition(window.innerWidth / 2, window.innerHeight / 2);
             
             // Обработчики событий для сенсорного управления
-            wall.addEventListener('touchstart', handleTouchStart, { passive: false });
-            wall.addEventListener('touchmove', handleTouchMove, { passive: false });
-            wall.addEventListener('touchend', handleTouchEnd);
+            document.addEventListener('touchstart', handleTouchStart, { passive: false });
+            document.addEventListener('touchmove', handleTouchMove, { passive: false });
+            document.addEventListener('touchend', handleTouchEnd);
             
             // Также добавляем обработчики для мыши (на случай десктопного использования)
-            wall.addEventListener('mousedown', handleMouseDown);
-            wall.addEventListener('mousemove', handleMouseMove);
-            wall.addEventListener('mouseup', handleMouseUp);
-            wall.addEventListener('mouseleave', handleMouseUp);
+            document.addEventListener('mousedown', handleMouseDown);
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
             
             // Кнопка старта
             startButton.addEventListener('click', startGame);
+            
+            // Обработчик изменения размера экрана
+            window.addEventListener('resize', updateWallTransform);
+            
+            // Инициализируем преобразование стены
+            updateWallTransform();
+        }
+        
+        function updateWallTransform() {
+            wallContainer.style.transform = `rotateX(${wallAngleX}deg) rotateY(${wallAngleY}deg)`;
         }
         
         function startGame() {
@@ -313,14 +327,8 @@
         }
         
         function updateRollerPosition(x, y) {
-            const wallRect = wall.getBoundingClientRect();
-            
-            // Ограничиваем положение валика в пределах стены
-            const rollerX = Math.max(wallRect.left, Math.min(x, wallRect.right)) - roller.offsetWidth / 2;
-            const rollerY = Math.max(wallRect.top, Math.min(y, wallRect.bottom)) - roller.offsetHeight / 2;
-            
-            roller.style.left = `${rollerX}px`;
-            roller.style.top = `${rollerY}px`;
+            roller.style.left = `${x - roller.offsetWidth / 2}px`;
+            roller.style.top = `${y - roller.offsetHeight / 2}px`;
             
             // Поворачиваем валик в направлении движения
             if (lastX && lastY) {
@@ -332,9 +340,15 @@
         function paint(x, y) {
             if (!isPainting || !gameStarted) return;
             
+            // Преобразуем координаты экрана в координаты стены с учетом 3D-преобразования
             const wallRect = wall.getBoundingClientRect();
             const relX = x - wallRect.left;
             const relY = y - wallRect.top;
+            
+            // Проверяем, что касание было внутри стены
+            if (relX < 0 || relY < 0 || relX > wallRect.width || relY > wallRect.height) {
+                return;
+            }
             
             // Проверяем, не красили ли мы уже это место
             if (!isAreaPainted(relX, relY)) {
@@ -407,11 +421,33 @@
             isPainting = true;
             const touch = e.touches[0];
             updateRollerPosition(touch.clientX, touch.clientY);
+            
+            // Если касание двумя пальцами - вращаем стену
+            if (e.touches.length >= 2) {
+                isPainting = false;
+                return;
+            }
+            
             paint(touch.clientX, touch.clientY);
         }
         
         function handleTouchMove(e) {
             e.preventDefault();
+            
+            // Если двумя пальцами - вращаем стену
+            if (e.touches.length >= 2) {
+                isPainting = false;
+                
+                // Простое вращение по оси Y для демонстрации
+                wallAngleY += e.touches[0].clientX - lastX;
+                updateWallTransform();
+                
+                const touch = e.touches[0];
+                lastX = touch.clientX;
+                lastY = touch.clientY;
+                return;
+            }
+            
             if (!isPainting || !gameStarted) return;
             
             const touch = e.touches[0];
